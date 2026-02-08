@@ -1,6 +1,9 @@
 #!/bin/bash
 # Example: Translate TISER dataset to Italian
 
+# Fix for macOS OpenMP library conflict
+export KMP_DUPLICATE_LIB_OK=TRUE
+
 # Translate training data (first 1000 samples for testing)
 python multilingual_tiser/translation/translate_dataset.py \
     --input data/TISER_train.json \

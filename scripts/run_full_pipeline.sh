@@ -3,6 +3,9 @@
 
 set -e  # Exit on error
 
+# Fix for macOS OpenMP library conflict
+export KMP_DUPLICATE_LIB_OK=TRUE
+
 echo "=============================================="
 echo "TISER Multilingual Translation Pipeline"
 echo "=============================================="

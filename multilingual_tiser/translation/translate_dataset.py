@@ -5,7 +5,7 @@ import torch
 import os
 from tqdm import tqdm
 
-from transformers import pipeline, AutoTokenizer
+from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
 from transformers.utils import logging as hf_logging
 
 from utils.utils import (
@@ -33,10 +33,18 @@ random.seed(RANDOM_SEED)
 MODEL_NAME = "facebook/nllb-200-distilled-600M"
 SRC_LANG = "eng_Latn"
 
-LANG_MAP = {
+ISO_TO_NLLB = {
     "it": "ita_Latn",
     "fa": "pes_Arab",
     "de": "deu_Latn",
+    "en": "eng_Latn",
+}
+
+NLLB_TO_ISO = {
+    "ita_Latn": "it",
+    "pes_Arab": "fa",
+    "deu_Latn": "de",
+    "eng_Latn": "en",
 }
 
 # ==================================================
@@ -140,18 +148,75 @@ def main():
     def run(lang):
         print(f"\nProcessing language: {lang} | Mode: {args.category}")
 
-        translator = pipeline(
-            "translation",
-            model=MODEL_NAME,
-            device=0 if device == "cuda" else -1,
-            src_lang=SRC_LANG,
-            tgt_lang=LANG_MAP[lang],
-            torch_dtype=torch.float16 if device == "cuda" else torch.float32
-        )
+        # Load model
+        model = AutoModelForSeq2SeqLM.from_pretrained(
+            MODEL_NAME,
+            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+        ).to(device)
 
+        # Configure tokenizer for target language
+        tokenizer.src_lang = SRC_LANG
+        target_lang = ISO_TO_NLLB[lang]
         
+        # Get the forced_bos_token_id for the target language
+        forced_bos_token_id = tokenizer.convert_tokens_to_ids(target_lang)
         
+        # Create a custom translation function        
+        def translator(texts, truncation=False, max_new_tokens=1024):
+            
+            # Convert single string to list
+            single = False
+            if isinstance(texts, str):
+                texts = [texts]
+                single = True
 
+            # Ensure all inputs are strings
+            valid_texts = []
+            for t in texts:
+                if t is None:
+                    valid_texts.append("")
+                elif isinstance(t, str):
+                    valid_texts.append(t)
+                else:
+                    valid_texts.append(str(t))
+
+            # Keep track of non-empty strings only
+            non_empty_idx = [i for i, t in enumerate(valid_texts) if t.strip()]
+            non_empty_texts = [valid_texts[i] for i in non_empty_idx]
+
+            outputs = [""] * len(valid_texts)
+
+            if non_empty_texts:
+                tokenizer.src_lang = tokenizer.src_lang  # just to be safe
+
+                # Tokenize safely
+                inputs = tokenizer(
+                    non_empty_texts,
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=truncation
+                ).to(device)
+
+                # Generate translations
+                translated_tokens = model.generate(
+                    **inputs,
+                    forced_bos_token_id=forced_bos_token_id,
+                    max_new_tokens=max_new_tokens
+                )
+
+                decoded = tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)
+
+                # Place results back into original order
+                for idx, out in zip(non_empty_idx, decoded):
+                    outputs[idx] = out.strip()
+
+            # Return list of dicts
+            result = [{"translation_text": text} for text in outputs]
+
+            if single:
+                return [result[0]]
+            return result
+    
         final_data = []
 
         # PRECOLLECT
