@@ -188,7 +188,8 @@ def main():
 
             # CONTEXT (CHUNKED, NO TRUNCATION)
             c_raw = normalize_temporal(
-                repair_mangled_unicode(ex.get("temporal_context", ex.get("context", "")))
+                repair_mangled_unicode(ex.get("temporal_context", ex.get("context", ""))),
+                language=lang  # Pass language parameter for language-specific normalization
             )
             c_m, c_map = mask_parenthesized_entities(c_raw)
             c_tr = translate_long_text(c_m, translator, 1024)

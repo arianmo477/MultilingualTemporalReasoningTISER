@@ -1,10 +1,26 @@
-## TISER
+## TISER - Multilingual Extension
 
 ### Learning to Reason Over Time: Timeline Self-Reflection for Improved Temporal Reasoning in Language Models
 
-This repository contains the data for the paper (ACL 2025 Main): [Learning to Reason Over Time: Timeline Self-Reflection for Improved Temporal Reasoning in Language Models](https://arxiv.org/pdf/2504.05258).
+This repository contains the **multilingual extension** for the TISER dataset from the paper (ACL 2025 Main): [Learning to Reason Over Time: Timeline Self-Reflection for Improved Temporal Reasoning in Language Models](https://arxiv.org/pdf/2504.05258).
 
 TISER incorporates a multi-stage inference pipeline that combines explicit reasoning, timeline construction, and iterative self-reflection. The key idea behind our approach is to empower LLMs to adapt by scaling their internal reasoning process during inference. TISER enables models to systematically organize temporal information, verify their inferences, and refine their outputs.
+
+### 🌍 Multilingual Extension
+
+This repository extends TISER to **multiple languages**:
+- 🇮🇹 **Italian (it)**
+- 🇮🇷 **Persian/Farsi (fa)**
+- 🇩🇪 **German (de)**
+
+**Key Features:**
+- ✅ High-quality neural machine translation with entity preservation
+- ✅ Language-specific temporal expression normalization
+- ✅ Chain-of-thought structure preservation across languages
+- ✅ Comprehensive validation and quality control
+- ✅ Ready-to-use scripts for the complete translation pipeline
+
+📖 **See [USAGE.md](USAGE.md) for detailed instructions!**
 
 ## Train Data Format
 
@@ -45,6 +61,79 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 
 This library is licensed under the MIT-0 License. See the [LICENSE](LICENSE)  file.
 
+## Quick Start
+
+### Installation
+```bash
+# Create environment
+conda env create -f environment.yml
+conda activate tiser
+
+# Make scripts executable
+chmod +x scripts/*.sh
+```
+
+### Translate to a Single Language
+```bash
+# Translate 1000 samples to Italian (for testing)
+python multilingual_tiser/translation/translate_dataset.py \
+    --input data/TISER_train.json \
+    --output_dir data/translated \
+    --category train \
+    --language it \
+    --batch_size 8 \
+    --max_samples 1000
+```
+
+### Run Full Pipeline
+```bash
+# Translate all languages, validate, and generate statistics
+./scripts/run_full_pipeline.sh
+```
+
+### Example Scripts
+```bash
+./scripts/example_translate_single_language.sh   # Quick translation
+./scripts/example_validate_and_clean.sh          # Quality control
+./scripts/example_analyze_statistics.sh          # Statistics
+```
+
+## Repository Structure
+
+```
+├── data/
+│   ├── TISER_train.json              # Original English training data
+│   ├── TISER_test.json               # Original English test data
+│   └── prompts/                      # Multilingual prompts
+│       ├── prompt_en.txt
+│       ├── prompt_it.txt
+│       ├── prompt_fa.txt
+│       └── prompt_de.txt
+├── multilingual_tiser/
+│   ├── translation/
+│   │   └── translate_dataset.py      # Translation pipeline
+│   └── preprocess/
+│       ├── validate_tiser_dataset.py # Data validation & cleaning
+│       └── build_mixed_dataset.py    # Create multilingual datasets
+├── utils/
+│   ├── evaluation.py                 # Multilingual evaluation metrics
+│   ├── text_processing.py            # Language-specific processing
+│   └── io_gpu.py                     # GPU utilities
+└── scripts/
+    ├── run_full_pipeline.sh          # Complete automation
+    ├── validate_translation_quality.py
+    ├── analyze_dataset_statistics.py
+    └── example_*.sh                  # Usage examples
+```
+
+## Documentation
+
+- **[USAGE.md](USAGE.md)** - Comprehensive usage guide
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
+- **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)** - Code of conduct
+
 ## Contact
 
-For feedback or questions please contact [Adrián Bazaga](https://bazaga.ai/)
+For feedback or questions about the multilingual extension, please open an issue.
+
+For questions about the original TISER paper, please contact [Adrián Bazaga](https://bazaga.ai/)

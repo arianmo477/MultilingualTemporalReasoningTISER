@@ -28,17 +28,58 @@ def repair_mangled_unicode(s: str) -> str:
         return s
 
 
-_RANGE_RE = re.compile(r"\b(\d{4})\s*-\s*(\d{4})\b")
-_STARTS_RE = re.compile(r"\bstarts at\s+(\d{4})\b", re.IGNORECASE)
-_ENDS_RE = re.compile(r"\bends at\s+(\d{4})\b", re.IGNORECASE)
+# Multilingual temporal patterns
+_RANGE_RE_EN = re.compile(r"\b(\d{4})\s*-\s*(\d{4})\b")
+_STARTS_RE_EN = re.compile(r"\bstarts at\s+(\d{4})\b", re.IGNORECASE)
+_ENDS_RE_EN = re.compile(r"\bends at\s+(\d{4})\b", re.IGNORECASE)
 
-def normalize_temporal(text: str) -> str:
+# Italian patterns
+_RANGE_RE_IT = re.compile(r"\bdal\s+(\d{4})\s+al\s+(\d{4})\b", re.IGNORECASE)
+_STARTS_RE_IT = re.compile(r"\binizia\s+nel\s+(\d{4})\b", re.IGNORECASE)
+_ENDS_RE_IT = re.compile(r"\bfinisce\s+nel\s+(\d{4})\b", re.IGNORECASE)
+
+# German patterns
+_RANGE_RE_DE = re.compile(r"\bvon\s+(\d{4})\s+bis\s+(\d{4})\b", re.IGNORECASE)
+_STARTS_RE_DE = re.compile(r"\bbeginnt\s+(im\s+Jahr\s+)?(\d{4})\b", re.IGNORECASE)
+_ENDS_RE_DE = re.compile(r"\bendet\s+(im\s+Jahr\s+)?(\d{4})\b", re.IGNORECASE)
+
+# Persian patterns (using Persian digits)
+_RANGE_RE_FA = re.compile(r"\bاز\s+([۰-۹]{4})\s+تا\s+([۰-۹]{4})\b")
+_STARTS_RE_FA = re.compile(r"\bشروع\s+در\s+([۰-۹]{4})\b")
+_ENDS_RE_FA = re.compile(r"\bپایان\s+در\s+([۰-۹]{4})\b")
+
+def normalize_temporal(text: str, language: str = "en") -> str:
+    """
+    Normalize temporal expressions in multiple languages.
+    
+    Args:
+        text: Text to normalize
+        language: Language code ('en', 'it', 'de', 'fa')
+    
+    Returns:
+        Normalized text
+    """
     if not text:
         return text
     text = re.sub(r"\s+", " ", text).strip()
-    text = _RANGE_RE.sub(r"From \1 to \2", text)
-    text = _STARTS_RE.sub(r"started in \1", text)
-    text = _ENDS_RE.sub(r"ended in \1", text)
+    
+    if language == "en":
+        text = _RANGE_RE_EN.sub(r"From \1 to \2", text)
+        text = _STARTS_RE_EN.sub(r"started in \1", text)
+        text = _ENDS_RE_EN.sub(r"ended in \1", text)
+    elif language == "it":
+        text = _RANGE_RE_IT.sub(r"Dal \1 al \2", text)
+        text = _STARTS_RE_IT.sub(r"iniziato nel \1", text)
+        text = _ENDS_RE_IT.sub(r"finito nel \1", text)
+    elif language == "de":
+        text = _RANGE_RE_DE.sub(r"Von \1 bis \2", text)
+        text = _STARTS_RE_DE.sub(lambda m: f"begann im Jahr {m.group(2)}", text)
+        text = _ENDS_RE_DE.sub(lambda m: f"endete im Jahr {m.group(2)}", text)
+    elif language == "fa":
+        text = _RANGE_RE_FA.sub(r"از \1 تا \2", text)
+        text = _STARTS_RE_FA.sub(r"شروع شده در \1", text)
+        text = _ENDS_RE_FA.sub(r"پایان یافته در \1", text)
+    
     return text
 
 
