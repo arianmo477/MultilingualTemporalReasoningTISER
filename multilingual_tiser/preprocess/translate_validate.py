@@ -25,6 +25,33 @@ SCORE_THRESHOLD = 0.50
 # STRUCTURAL VALIDATION TOOLS
 # ==================================================
 
+ALLOWED_TAGS = {
+    "reasoning", "/reasoning",
+    "timeline", "/timeline",
+    "reflection", "/reflection",
+    "answer", "/answer",
+}
+
+TAG_FINDER = re.compile(r"<\s*/?\s*([a-zA-Z0-9_]+)[^>]*>")
+
+def has_only_allowed_tags(text: str) -> bool:
+    """
+    Returns False if ANY tag other than the allowed CoT tags appears.
+    """
+    if not text:
+        return False
+
+    tags = TAG_FINDER.findall(text)
+
+    for tag in tags:
+        tag = tag.strip().lower()
+        if tag not in ALLOWED_TAGS:
+            return False
+
+    return True
+
+
+
 def validate_cot_structure(text: str) -> bool:
     """Quick check if CoT structure is valid"""
     if not text: return False
@@ -118,6 +145,13 @@ def main():
         was_fixed = False
         if args.category == "train":
             tgt_output = item.get("output", "")
+            #  STRICT TAG VALIDATION
+            if not has_only_allowed_tags(tgt_output):
+                item["validation_status"] = "FAIL"
+                item["validation_reason"] = "invalid_extra_tags"
+                stats["FAIL"] += 1
+                fixed_data.append(item)
+                continue
             # Only validate structure if output field exists
             if not validate_cot_structure(tgt_output):
                 new_output = repair_cot_structure(tgt_output, tgt_answer)
