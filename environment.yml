@@ -36,5 +36,5 @@ dependencies:
       # Other
       - sentence-transformers>=2.5.0
       - langdetect 
-
+      
      
