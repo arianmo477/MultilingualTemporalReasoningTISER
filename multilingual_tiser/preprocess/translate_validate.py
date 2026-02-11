@@ -18,7 +18,7 @@ from sentence_transformers import SentenceTransformer, util
 # CONFIGURATION
 # ==================================================
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-SCORE_PASS = 0.85      
+SCORE_PASS = 0.85     
 SCORE_THRESHOLD = 0.50 
 
 # ==================================================

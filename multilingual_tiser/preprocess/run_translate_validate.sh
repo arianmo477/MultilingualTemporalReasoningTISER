@@ -14,7 +14,6 @@ python3 multilingual_tiser/preprocess/translate_validate.py \
     --input "$TARGET" \
     --en "$SOURCE" \
     --output "$TARGET" \
-    --lang "$lang"\
     --category "$category"
 
 echo "Done."
