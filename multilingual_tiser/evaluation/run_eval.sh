@@ -1,55 +1,50 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -e
 
 export PYTHONPATH="$(pwd):$PYTHONPATH"
 
-MODEL=$1
-LANG=$2
-ADAPTER_DIR=$3
-MAX_EVAL_SAMPLES=${4:-""}
+MODEL_TYPE=$1       # qwen or mistral
+LANG=$2             # it, fa, de, en
+ADAPTER_DIR=$3      # Path to the adapter folder
+STRATEGY=${4:-base} # base or iterative (defaults to base)
+MAX_SAMPLES=${5:-}  
 
-if [[ -z "$MODEL" || -z "$LANG" || -z "$ADAPTER_DIR" ]]; then
-  echo "Usage: bash multilingual/evaluation/run_eval.sh [qwen|mistral] [it|fa|de|en] [path/to/adapter] [max_samples(optional)]"
+if [[ -z "$MODEL_TYPE" || -z "$LANG" || -z "$ADAPTER_DIR" ]]; then
+  echo "Usage: bash run_eval_pipeline.sh [qwen|mistral] [lang] [adapter_path] [base|iterative] [max_samples]"
   exit 1
 fi
 
-if [[ "$MODEL" == "qwen" ]]; then
+# Select Base Model
+if [[ "$MODEL_TYPE" == "qwen" ]]; then
   BASE_MODEL="Qwen/Qwen2.5-7B-Instruct"
-elif [[ "$MODEL" == "mistral" ]]; then
-  BASE_MODEL="mistralai/Mistral-7B-Instruct-v0.2"
 else
-  echo "Invalid model type. Use qwen or mistral."
-  exit 1
+  BASE_MODEL="mistralai/Mistral-7B-Instruct-v0.2"
 fi
 
 TEST_FILE="data/splits/test/TISER_test_${LANG}.json"
-
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-mkdir -p "$ADAPTER_DIR/results"
+RESULTS_DIR="${ADAPTER_DIR}/results"
+mkdir -p "$RESULTS_DIR"
 
-OUT_FILE="${ADAPTER_DIR}/results/eval_${LANG}_${TIMESTAMP}_${MAX_EVAL_SAMPLES:-all}.json"
+GEN_OUTPUT="${RESULTS_DIR}/gen_${LANG}_${STRATEGY}_${TIMESTAMP}.json"
 
-# Construct command array
-CMD=(
-  python multilingual_tiser/evaluation/evaluate.py
-  --base_model "$BASE_MODEL"
-  --adapter_dir "$ADAPTER_DIR"
-  --test_file "$TEST_FILE"
-  --output_file "$OUT_FILE"
-  --max_new_tokens 512
-  --use_chat_template
-  --only_passed
-)
-
-if [[ -n "$MAX_EVAL_SAMPLES" ]]; then
-  CMD+=(--max_eval_samples "$MAX_EVAL_SAMPLES")
+MAX_SAMPLES_ARG=""
+if [[ -n "$MAX_SAMPLES" ]]; then
+  MAX_SAMPLES_ARG="--max_eval_samples $MAX_SAMPLES"
 fi
 
-echo "=========================================="
-echo "Running Evaluation"
-echo "Base Model: $BASE_MODEL"
-echo "Adapter   : $ADAPTER_DIR"
-echo "Test File : $TEST_FILE"
-echo "=========================================="
+echo "Strategy: $STRATEGY"
 
-"${CMD[@]}"
+python multilingual_tiser/evaluation/inference.py \
+  --base_model "$BASE_MODEL" \
+  --adapter_dir "$ADAPTER_DIR" \
+  --test_file "$TEST_FILE" \
+  --output_file "$GEN_OUTPUT" \
+  --max_new_tokens 1024 \
+  --batch_size 4 \
+  --strategy "$STRATEGY" \
+  --only_passed \
+  --max_extensions 2 \
+  $MAX_SAMPLES_ARG
+
+echo "Generation complete: $GEN_OUTPUT"
