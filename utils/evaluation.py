@@ -19,6 +19,7 @@ ANSWER_LINE_REGEX = re.compile(
     r"^\s*(?:final\s*answer|answer|antwort)\s*[:\-]\s*(.+?)\s*$",
     re.IGNORECASE,
 )
+ANSWER_CUTOFF_REGEX = re.compile(r"<answer>\s*(.*)", re.DOTALL | re.IGNORECASE)
 
 UNKNOWN_TRIGGERS = [
     "unknown", "not specified", "not mentioned",
@@ -30,23 +31,20 @@ UNKNOWN_TRIGGERS = [
 TRUE_TRIGGERS = ["true", "yes", "vero", "ja", "درست"]
 FALSE_TRIGGERS = ["false", "no", "falso", "nein", "نادرست"]
 
-
 def normalize_text(text: str) -> str:
-    if text is None:
-        return ""
-    text = str(text).lower().strip()
-    text = text.translate(PERSIAN_TO_ENGLISH_TBL)
-    text = text.translate(str.maketrans("", "", string.punctuation))
+    if text is None: return ""
+    text = str(text).lower().strip().translate(str.maketrans("", "", string.punctuation))
+    
     return " ".join(text.split())
-
 
 def normalize_boolean(text: str) -> str:
     t = normalize_text(text)
-    if any(x in t for x in TRUE_TRIGGERS):
-        return "true"
-    if any(x in t for x in FALSE_TRIGGERS):
-        return "false"
+    trues = ["true", "yes", "vero", "ja", "wahr"]
+    falses = ["false", "no", "falso", "nein", "falsch"]
+    if any(x in t for x in trues): return "true"
+    if any(x in t for x in falses): return "false"
     return ""
+
 
 def normalize_boolean_translation(text: str, lang: str) -> str:
     if not text:
@@ -72,12 +70,6 @@ def normalize_boolean_translation(text: str, lang: str) -> str:
         if t in {"false", "no"}:
             return "False"
 
-    # --- PERSIAN ---
-    if lang == "fa":
-        if t in {"درست"}:
-            return "درست"
-        if t in {"نادرست"}:
-            return "نادرست"
 
     # --- GERMAN ---
     if lang == "de":
@@ -137,6 +129,35 @@ def extract_answer_from_generation(full_text: str) -> str:
     return trim_answer_text(full_text)
 
 
+def calculate_metrics_mix(pred: str, gold_candidates: list):
+    """Checks prediction against multiple gold answers (e.g. Italian and English)."""
+    def get_scores(p, g):
+        if not g: return 0, 0, 0.0
+        pb, gb = normalize_boolean(p), normalize_boolean(g)
+        if gb:
+            match = int(pb == gb)
+            return match, match, float(match)
+        
+        p_norm = normalize_text(TAG_REGEX.sub("", str(p or "")))
+        g_norm = normalize_text(TAG_REGEX.sub("", str(g or "")))
+        
+        em = int(p_norm == g_norm)
+        soft = int(p_norm in g_norm or g_norm in p_norm)
+        
+        pt, gt = p_norm.split(), g_norm.split()
+        if not pt or not gt: return em, soft, (1.0 if pt == gt else 0.0)
+        common = Counter(pt) & Counter(gt)
+        overlap = sum(common.values())
+        f1 = 2 * overlap / (len(pt) + len(gt))
+        return em, soft, f1
+
+    best = (0, 0, 0.0)
+    for gold in gold_candidates:
+        res = get_scores(pred, gold)
+        if res[0] > best[0] or (res[0] == best[0] and res[2] > best[2]):
+            best = res
+    return best
+
 def calculate_metrics(pred: str, gold: str):
     pred_b = normalize_boolean(pred)
     gold_b = normalize_boolean(gold)
@@ -161,3 +182,23 @@ def calculate_metrics(pred: str, gold: str):
     f1 = 0.0 if overlap == 0 else 2 * overlap / (len(pt) + len(gt))
 
     return em, soft, f1
+
+# Add this new regex at the top with your others
+ANSWER_CUTOFF_REGEX = re.compile(r"<answer>\s*(.*)", re.DOTALL | re.IGNORECASE)
+
+def extract_answer_from_generation(full_text: str) -> str:
+    if not full_text: return ""
+    m = ANSWER_REGEX.search(full_text)
+    if m: return m.group(1).strip()
+    m_cut = ANSWER_CUTOFF_REGEX.search(full_text)
+    if m_cut: return re.split(r'\n\n|<', m_cut.group(1).strip())[0].strip()
+    return full_text.strip()
+
+    # 3. Fallback: Line-based formats ("Answer: ...")
+    for ln in reversed(full_text.splitlines()):
+        m2 = ANSWER_LINE_REGEX.match(ln)
+        if m2:
+            return trim_answer_text(m2.group(1))
+            
+    # 4. Last Resort: Treat the whole text as the answer
+    return trim_answer_text(full_text)
