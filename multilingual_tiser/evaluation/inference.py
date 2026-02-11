@@ -11,12 +11,69 @@ from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 from utils.io_gpu import balance_by_dataset_name
-from utils.evaluation import extract_answer_from_generation, TAG_REGEX, normalize_text, normalize_boolean, calculate_metrics, calculate_metrics_mix
 #from utils.evaluation import calculate_metrics
 import random
 
 
 
+# ==================================================
+# METRIC UTILS (Optimized for Multi-Gold & Fixes)
+# ==================================================
+TAG_REGEX = re.compile(r"<[^>]+>")
+ANSWER_REGEX = re.compile(r"<answer>\s*(.*?)\s*</answer>", re.DOTALL | re.IGNORECASE)
+ANSWER_CUTOFF_REGEX = re.compile(r"<answer>\s*(.*)", re.DOTALL | re.IGNORECASE)
+
+def normalize_text(text: str) -> str:
+    if text is None: return ""
+    text = str(text).lower().strip().translate(str.maketrans("", "", string.punctuation))
+    # Standardize Persian characters
+    text = text.replace("ي", "ی").replace("ك", "ک")
+    return " ".join(text.split())
+
+def normalize_boolean(text: str) -> str:
+    t = normalize_text(text)
+    trues = ["true", "yes", "vero", "ja", "درست", "wahr"]
+    falses = ["false", "no", "falso", "nein", "نادرست", "falsch"]
+    if any(x in t for x in trues): return "true"
+    if any(x in t for x in falses): return "false"
+    return ""
+
+def calculate_metrics(pred: str, gold_candidates: list):
+    """Checks prediction against multiple gold answers (e.g. Italian and English)."""
+    def get_scores(p, g):
+        if not g: return 0, 0, 0.0
+        pb, gb = normalize_boolean(p), normalize_boolean(g)
+        if gb:
+            match = int(pb == gb)
+            return match, match, float(match)
+        
+        p_norm = normalize_text(TAG_REGEX.sub("", str(p or "")))
+        g_norm = normalize_text(TAG_REGEX.sub("", str(g or "")))
+        
+        em = int(p_norm == g_norm)
+        soft = int(p_norm in g_norm or g_norm in p_norm)
+        
+        pt, gt = p_norm.split(), g_norm.split()
+        if not pt or not gt: return em, soft, (1.0 if pt == gt else 0.0)
+        common = Counter(pt) & Counter(gt)
+        overlap = sum(common.values())
+        f1 = 2 * overlap / (len(pt) + len(gt))
+        return em, soft, f1
+
+    best = (0, 0, 0.0)
+    for gold in gold_candidates:
+        res = get_scores(pred, gold)
+        if res[0] > best[0] or (res[0] == best[0] and res[2] > best[2]):
+            best = res
+    return best
+
+def extract_answer_from_generation(full_text: str) -> str:
+    if not full_text: return ""
+    m = ANSWER_REGEX.search(full_text)
+    if m: return m.group(1).strip()
+    m_cut = ANSWER_CUTOFF_REGEX.search(full_text)
+    if m_cut: return re.split(r'\n\n|<', m_cut.group(1).strip())[0].strip()
+    return full_text.strip()
 
 # ================= PROMPT BUILDER =================
 def build_prompt(ex):
@@ -115,26 +172,11 @@ def main():
 
         for j, pred in enumerate(decoded_preds):
             full_response = pred if pred.startswith("<reasoning>") else "<reasoning>" + pred
-
-            # Extract basic fields
-            language = batch_data[j].get("language", "en") # Default to en if missing
-            if language == "en":
-                gold_en = batch_data[j].get("answer", "").strip()
-            else: 
-                gold_en = batch_data[j].get("answer_en", "").strip()
-                gold_tr = batch_data[j].get("answer", "").strip()
+            gold_it = str(batch_data[j].get("answer", ""))
+            gold_en = str(batch_data[j].get("answer_en", ""))
             
             extracted = extract_answer_from_generation(full_response)
-            
-            # --- CONDITIONAL METRIC CALCULATION ---
-            if language == "en":
-                # For English, we only compare against the main answer
-                em, soft, f1 = calculate_metrics(extracted, gold_en)
-            else:
-                # For non-English, we mix metrics against target language answer AND English answer
-                em, soft, f1 = calculate_metrics_mix(extracted, [gold_tr, gold_en])
-            # --------------------------------------
-           
+            em, soft, f1 = calculate_metrics(extracted, [gold_it, gold_en])
             
             r_em += em
             r_f1 += f1
@@ -142,7 +184,7 @@ def main():
             
             results.append({
                 "question_id": batch_data[j].get("question_id"),
-                "gold_tr": gold_tr if language != "en" else None,
+                "gold_it": gold_it,
                 "gold_en": gold_en,
                 "extracted": extracted,
                 "model_output": full_response,
