@@ -17,36 +17,35 @@ if [[ -n "$MAX_SAMPLES" ]]; then
   MAX_SAMPLES_ARG="--max_train_samples $MAX_SAMPLES"
 fi
 
-
 MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
 TRAIN_FILE="data/splits/train/TISER_train_${LANG}.json"
-OUT_DIR="experiments/${MODEL}/${LANG}_${MAX_SAMPLES:-full}_8GB_safe"
+OUT_DIR="experiments/${MODEL}/${LANG}_${MAX_SAMPLES:-full}_4090_Optimized"
 mkdir -p "$OUT_DIR"
 
-# --- 8GB VRAM "EMERGENCY" SETTINGS ---
-# We reduced settings to ensure it fits on RTX 3070 Ti
-
+# --- RTX 4090 (24GB) SETTINGS ---
 EPOCHS=2
 LR=2e-4
 
-# 
-MAX_LEN=1024
+# 3072 is safe for 24GB VRAM with gradient checkpointing
+MAX_LEN=3072
 
-# REDUCED: 64 -> 16 (Saves memory on gradients)
-LORA_R=8
-LORA_ALPHA=16
+# LoRA Config
+LORA_R=32
+LORA_ALPHA=64
 LORA_DROPOUT=0.05
 
-PER_DEVICE_BS=1
-# INCREASED: 16 -> 32 (To compensate for lower batch/seq len)
-GRAD_ACCUM=32
+# Batch Size Strategy for 24GB
+# BS=4 per device * 4 accum steps = Effective Batch Size 16
+PER_DEVICE_BS=2
+GRAD_ACCUM=8
 
 echo "=============================="
-echo " STARTING 8GB SAFE TRAINING"
+echo " STARTING RTX 4090 TRAINING"
 echo "Model         : $MODEL_NAME"
 echo "Language      : $LANG"
-echo "Max Length    : $MAX_LEN (Reduced)"
-echo "LoRA Rank     : $LORA_R (Reduced)"
+echo "Max Length    : $MAX_LEN"
+echo "LoRA Rank     : $LORA_R"
+echo "Batch Size    : $PER_DEVICE_BS (Accum: $GRAD_ACCUM)"
 echo "=============================="
 
 python multilingual_tiser/training/train_qlora.py \
@@ -62,8 +61,8 @@ python multilingual_tiser/training/train_qlora.py \
   --per_device_batch_size "$PER_DEVICE_BS" \
   --grad_accum "$GRAD_ACCUM" \
   --save_steps 200 \
-  --logging_steps 5 \
-  --dataloader_num_workers 0 \
+  --logging_steps 10 \
+  --dataloader_num_workers 4 \
   --gradient_checkpointing 1 \
   $MAX_SAMPLES_ARG \
-  --only_passed \
+  --only_passed
