@@ -1,9 +1,2 @@
 *.json filter=lfs diff=lfs merge=lfs -text
 
-
-experiments/
-*.pt
-*.bin
-*.safetensors
-optimizer.pt
-checkpoints/
